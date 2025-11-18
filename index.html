@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Anonymous Secure Chat</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -122,15 +121,22 @@
             border-radius: 8px;
             background: white;
             box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            animation: slideIn 0.3s ease;
         }
-        .message.sent {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            margin-left: 20%;
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
-        .message.received {
-            background: white;
-            margin-right: 20%;
+        .message-user {
+            font-weight: 600;
+            color: #667eea;
+            margin-bottom: 5px;
         }
         .message-time {
             font-size: 11px;
@@ -172,13 +178,19 @@
         .common-room-btn {
             background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
         }
+        .status {
+            text-align: center;
+            padding: 5px;
+            font-size: 12px;
+            color: #666;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
             <h1>🔒 Anonymous Secure Chat</h1>
-            <p>End-to-end encrypted • No registration • Fully anonymous</p>
+            <p>End-to-end encrypted • Real-time sync • Fully anonymous</p>
         </div>
 
         <div class="setup-screen" id="setupScreen">
@@ -199,6 +211,7 @@
                 <div>Connected to Room</div>
                 <div class="room-code" id="displayRoomCode"></div>
                 <small>Share this code with others to chat</small>
+                <div class="status" id="status">Connecting...</div>
             </div>
             <div id="messages"></div>
             <div class="input-area">
@@ -210,30 +223,28 @@
         </div>
     </div>
 
-    <script>
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+        import { getDatabase, ref, push, onChildAdded, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyAodrgESk6nBH-pxaUKVuZc3sgCjmaCigA",
+            databaseURL: "https://anonymous--chat-968c8-default-rtdb.firebaseio.com",
+            projectId: "anonymous--chat-968c8"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const database = getDatabase(app);
+
         let currentRoom = '';
         let currentUser = '';
-        let encryptionKey = '';
-        const messages = [];
+        let messagesRef = null;
 
-        function generateRoomCode() {
+        window.generateRoomCode = function() {
             return Math.random().toString(36).substring(2, 8).toUpperCase();
         }
 
-        function encrypt(text, key) {
-            return CryptoJS.AES.encrypt(text, key).toString();
-        }
-
-        function decrypt(ciphertext, key) {
-            try {
-                const bytes = CryptoJS.AES.decrypt(ciphertext, key);
-                return bytes.toString(CryptoJS.enc.Utf8);
-            } catch(e) {
-                return '[Encrypted Message]';
-            }
-        }
-
-        function joinRoom() {
+        window.joinRoom = function() {
             const username = document.getElementById('username').value.trim();
             let roomCode = document.getElementById('roomCode').value.trim().toUpperCase();
 
@@ -248,16 +259,15 @@
 
             currentRoom = roomCode;
             currentUser = username;
-            encryptionKey = roomCode;
 
             document.getElementById('displayRoomCode').textContent = roomCode;
             document.getElementById('setupScreen').style.display = 'none';
             document.getElementById('chatScreen').style.display = 'block';
 
-            addSystemMessage(`Welcome ${username}! You're now in room ${roomCode}`);
+            setupRealtimeChat();
         }
 
-        function joinCommonRoom() {
+        window.joinCommonRoom = function() {
             const username = document.getElementById('username').value.trim();
 
             if (!username) {
@@ -267,59 +277,76 @@
 
             currentRoom = 'COMMON';
             currentUser = username;
-            encryptionKey = 'COMMON';
 
             document.getElementById('displayRoomCode').textContent = 'COMMON';
             document.getElementById('setupScreen').style.display = 'none';
             document.getElementById('chatScreen').style.display = 'block';
 
-            addSystemMessage(`Welcome ${username}! You're in the Common Room`);
+            setupRealtimeChat();
         }
 
-        function sendMessage() {
+        function setupRealtimeChat() {
+            messagesRef = ref(database, 'rooms/' + currentRoom);
+            document.getElementById('status').textContent = 'Connected ✓';
+
+            onChildAdded(messagesRef, (snapshot) => {
+                const message = snapshot.val();
+                displayMessage(message.user, message.text, message.timestamp, message.isImage);
+            });
+        }
+
+        window.sendMessage = function() {
             const input = document.getElementById('messageInput');
             const message = input.value.trim();
 
-            if (!message) return;
+            if (!message || !messagesRef) return;
 
-            const encryptedMessage = encrypt(message, encryptionKey);
-            displayMessage(currentUser, message, 'sent');
+            push(messagesRef, {
+                user: currentUser,
+                text: message,
+                timestamp: serverTimestamp(),
+                isImage: false
+            });
 
             input.value = '';
         }
 
-        function sendImage() {
+        window.sendImage = function() {
             const fileInput = document.getElementById('imageInput');
             const file = fileInput.files[0];
 
-            if (!file) return;
+            if (!file || !messagesRef) return;
 
             const reader = new FileReader();
             reader.onload = function(e) {
                 const imageData = e.target.result;
-                const encryptedImage = encrypt(imageData, encryptionKey);
-                displayMessage(currentUser, imageData, 'sent', true);
+                push(messagesRef, {
+                    user: currentUser,
+                    text: imageData,
+                    timestamp: serverTimestamp(),
+                    isImage: true
+                });
                 fileInput.value = '';
             };
             reader.readAsDataURL(file);
         }
 
-        function displayMessage(user, content, type, isImage = false) {
+        function displayMessage(user, content, timestamp, isImage = false) {
             const messagesDiv = document.getElementById('messages');
             const messageEl = document.createElement('div');
-            messageEl.className = `message ${type}`;
+            messageEl.className = 'message';
 
-            const time = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+            const time = timestamp ? new Date(timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'Now';
 
             if (isImage) {
                 messageEl.innerHTML = `
-                    <strong>${user}</strong>
+                    <div class="message-user">${user}</div>
                     <img src="${content}" alt="Shared image">
                     <div class="message-time">${time}</div>
                 `;
             } else {
                 messageEl.innerHTML = `
-                    <strong>${user}</strong>
+                    <div class="message-user">${user}</div>
                     <div>${content}</div>
                     <div class="message-time">${time}</div>
                 `;
@@ -327,17 +354,6 @@
 
             messagesDiv.appendChild(messageEl);
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
-        }
-
-        function addSystemMessage(text) {
-            const messagesDiv = document.getElementById('messages');
-            const messageEl = document.createElement('div');
-            messageEl.style.textAlign = 'center';
-            messageEl.style.color = '#666';
-            messageEl.style.margin = '10px 0';
-            messageEl.style.fontSize = '14px';
-            messageEl.textContent = text;
-            messagesDiv.appendChild(messageEl);
         }
     </script>
 </body>
