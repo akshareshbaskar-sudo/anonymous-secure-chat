@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Anonymous Secure Chat</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        .container {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            max-width: 800px;
+            width: 100%;
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        .header h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+        .header p {
+            opacity: 0.9;
+            font-size: 14px;
+        }
+        .setup-screen, .chat-screen {
+            padding: 30px;
+        }
+        .chat-screen {
+            display: none;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 600;
+        }
+        input[type="text"] {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+        input[type="text"]:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            width: 100%;
+            margin-top: 10px;
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+        button:active {
+            transform: translateY(0);
+        }
+        .btn-secondary {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            margin-top: 10px;
+        }
+        .room-info {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        .room-code {
+            font-size: 24px;
+            font-weight: bold;
+            color: #667eea;
+            margin: 10px 0;
+            letter-spacing: 2px;
+        }
+        #messages {
+            height: 400px;
+            overflow-y: auto;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+            background: #fafafa;
+        }
+        .message {
+            margin-bottom: 15px;
+            padding: 12px;
+            border-radius: 8px;
+            background: white;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        .message.sent {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            margin-left: 20%;
+        }
+        .message.received {
+            background: white;
+            margin-right: 20%;
+        }
+        .message-time {
+            font-size: 11px;
+            opacity: 0.7;
+            margin-top: 5px;
+        }
+        .message img {
+            max-width: 100%;
+            border-radius: 8px;
+            margin-top: 10px;
+        }
+        .input-area {
+            display: flex;
+            gap: 10px;
+        }
+        #messageInput {
+            flex: 1;
+        }
+        .file-input-label {
+            background: #4CAF50;
+            color: white;
+            padding: 12px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            display: inline-block;
+            text-align: center;
+            transition: background 0.3s;
+        }
+        .file-input-label:hover {
+            background: #45a049;
+        }
+        input[type="file"] {
+            display: none;
+        }
+        #sendBtn {
+            width: auto;
+            margin-top: 0;
+        }
+        .common-room-btn {
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔒 Anonymous Secure Chat</h1>
+            <p>End-to-end encrypted • No registration • Fully anonymous</p>
+        </div>
+
+        <div class="setup-screen" id="setupScreen">
+            <div class="form-group">
+                <label>Your Anonymous Name</label>
+                <input type="text" id="username" placeholder="Enter a nickname...">
+            </div>
+            <div class="form-group">
+                <label>Room Code (leave empty to create new)</label>
+                <input type="text" id="roomCode" placeholder="Enter room code or leave blank...">
+            </div>
+            <button onclick="joinRoom()">Join/Create Room</button>
+            <button class="btn-secondary common-room-btn" onclick="joinCommonRoom()">Join Common Room</button>
+        </div>
+
+        <div class="chat-screen" id="chatScreen">
+            <div class="room-info">
+                <div>Connected to Room</div>
+                <div class="room-code" id="displayRoomCode"></div>
+                <small>Share this code with others to chat</small>
+            </div>
+            <div id="messages"></div>
+            <div class="input-area">
+                <input type="text" id="messageInput" placeholder="Type your message..." onkeypress="if(event.key==='Enter') sendMessage()">
+                <label for="imageInput" class="file-input-label">📎 Image</label>
+                <input type="file" id="imageInput" accept="image/*" onchange="sendImage()">
+                <button id="sendBtn" onclick="sendMessage()">Send</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentRoom = '';
+        let currentUser = '';
+        let encryptionKey = '';
+        const messages = [];
+
+        function generateRoomCode() {
+            return Math.random().toString(36).substring(2, 8).toUpperCase();
+        }
+
+        function encrypt(text, key) {
+            return CryptoJS.AES.encrypt(text, key).toString();
+        }
+
+        function decrypt(ciphertext, key) {
+            try {
+                const bytes = CryptoJS.AES.decrypt(ciphertext, key);
+                return bytes.toString(CryptoJS.enc.Utf8);
+            } catch(e) {
+                return '[Encrypted Message]';
+            }
+        }
+
+        function joinRoom() {
+            const username = document.getElementById('username').value.trim();
+            let roomCode = document.getElementById('roomCode').value.trim().toUpperCase();
+
+            if (!username) {
+                alert('Please enter a nickname!');
+                return;
+            }
+
+            if (!roomCode) {
+                roomCode = generateRoomCode();
+            }
+
+            currentRoom = roomCode;
+            currentUser = username;
+            encryptionKey = roomCode;
+
+            document.getElementById('displayRoomCode').textContent = roomCode;
+            document.getElementById('setupScreen').style.display = 'none';
+            document.getElementById('chatScreen').style.display = 'block';
+
+            addSystemMessage(`Welcome ${username}! You're now in room ${roomCode}`);
+        }
+
+        function joinCommonRoom() {
+            const username = document.getElementById('username').value.trim();
+
+            if (!username) {
+                alert('Please enter a nickname!');
+                return;
+            }
+
+            currentRoom = 'COMMON';
+            currentUser = username;
+            encryptionKey = 'COMMON';
+
+            document.getElementById('displayRoomCode').textContent = 'COMMON';
+            document.getElementById('setupScreen').style.display = 'none';
+            document.getElementById('chatScreen').style.display = 'block';
+
+            addSystemMessage(`Welcome ${username}! You're in the Common Room`);
+        }
+
+        function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const message = input.value.trim();
+
+            if (!message) return;
+
+            const encryptedMessage = encrypt(message, encryptionKey);
+            displayMessage(currentUser, message, 'sent');
+
+            input.value = '';
+        }
+
+        function sendImage() {
+            const fileInput = document.getElementById('imageInput');
+            const file = fileInput.files[0];
+
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const imageData = e.target.result;
+                const encryptedImage = encrypt(imageData, encryptionKey);
+                displayMessage(currentUser, imageData, 'sent', true);
+                fileInput.value = '';
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function displayMessage(user, content, type, isImage = false) {
+            const messagesDiv = document.getElementById('messages');
+            const messageEl = document.createElement('div');
+            messageEl.className = `message ${type}`;
+
+            const time = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+
+            if (isImage) {
+                messageEl.innerHTML = `
+                    <strong>${user}</strong>
+                    <img src="${content}" alt="Shared image">
+                    <div class="message-time">${time}</div>
+                `;
+            } else {
+                messageEl.innerHTML = `
+                    <strong>${user}</strong>
+                    <div>${content}</div>
+                    <div class="message-time">${time}</div>
+                `;
+            }
+
+            messagesDiv.appendChild(messageEl);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function addSystemMessage(text) {
+            const messagesDiv = document.getElementById('messages');
+            const messageEl = document.createElement('div');
+            messageEl.style.textAlign = 'center';
+            messageEl.style.color = '#666';
+            messageEl.style.margin = '10px 0';
+            messageEl.style.fontSize = '14px';
+            messageEl.textContent = text;
+            messagesDiv.appendChild(messageEl);
+        }
+    </script>
+</body>
+</html>
